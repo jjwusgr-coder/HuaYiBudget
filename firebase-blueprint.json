@@ -1,0 +1,47 @@
+{
+  "entities": {
+    "Store": {
+      "title": "Store",
+      "description": "A store or shop entity",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "theme": { "type": "string" },
+        "categories": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "theme", "categories"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "A financial transaction (income or expense)",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "amount": { "type": "number" },
+        "rawAmount": { "type": "number" },
+        "percentage": { "type": "number" },
+        "category": { "type": "string" },
+        "storeId": { "type": "string" },
+        "note": { "type": "string" },
+        "isUnpaid": { "type": "boolean" },
+        "image": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "history": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "amount", "category", "storeId", "date"]
+    }
+  },
+  "firestore": {
+    "/artifacts/{appId}/users/{userId}/stores": {
+      "schema": { "$ref": "#/entities/Store" },
+      "description": "User's stores"
+    },
+    "/artifacts/{appId}/users/{userId}/transactions": {
+      "schema": { "$ref": "#/entities/Transaction" },
+      "description": "User's transactions"
+    }
+  }
+}

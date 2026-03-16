@@ -1,0 +1,34 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the user is accessing their own data
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Match the artifacts path
+    match /artifacts/{appId} {
+      
+      // Match the user's specific path
+      match /users/{userId} {
+        
+        // Allow users to read and write their own stores
+        match /stores/{storeId} {
+          allow read, write: if isOwner(userId);
+        }
+        
+        // Allow users to read and write their own transactions
+        match /transactions/{transactionId} {
+          allow read, write: if isOwner(userId);
+        }
+      }
+    }
+  }
+}
