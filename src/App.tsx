@@ -6,10 +6,11 @@ import {
 import { 
   signInWithPopup, 
   GoogleAuthProvider,
+  FacebookAuthProvider,
   onAuthStateChanged,
   signOut,
-  RecaptchaVerifier,
-  signInWithPhoneNumber
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
 import { 
   collection, 
@@ -77,11 +78,10 @@ export default function App() {
   const [storeToDelete, setStoreToDelete] = useState<any>(null);
 
   // Auth
-  const [countryCode, setCountryCode] = useState('+39');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
-  const [confirmationResult, setConfirmationResult] = useState<any>(null);
-  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoginMode, setIsLoginMode] = useState(true);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
@@ -115,9 +115,8 @@ export default function App() {
     try {
       await signOut(auth);
       setShowSettingsModal(false);
-      setConfirmationResult(null);
-      setPhoneNumber('');
-      setVerificationCode('');
+      setEmail('');
+      setPassword('');
       setAcceptedPrivacy(false);
     } catch (error) {
       console.error("Logout error:", error);
@@ -125,20 +124,9 @@ export default function App() {
     }
   };
 
-  const setupRecaptcha = () => {
-    if (!(window as any).recaptchaVerifier) {
-      (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        'size': 'invisible',
-        'callback': () => {
-          // reCAPTCHA solved
-        }
-      });
-    }
-  };
-
-  const handleSendCode = async () => {
-    if (!phoneNumber) {
-      showToast('请输入手机号', 'error');
+  const handleEmailAuth = async () => {
+    if (!email || !password) {
+      showToast('请输入邮箱和密码', 'error');
       return;
     }
     if (!acceptedPrivacy) {
@@ -146,37 +134,42 @@ export default function App() {
       return;
     }
     
-    setIsSendingCode(true);
+    setIsAuthenticating(true);
     try {
-      setupRecaptcha();
-      const appVerifier = (window as any).recaptchaVerifier;
-      const fullPhoneNumber = `${countryCode}${phoneNumber}`;
-      const result = await signInWithPhoneNumber(auth, fullPhoneNumber, appVerifier);
-      setConfirmationResult(result);
-      showToast('验证码已发送', 'success');
-    } catch (error) {
-      console.error("SMS error:", error);
-      showToast('发送验证码失败，请检查手机号格式', 'error');
-      if ((window as any).recaptchaVerifier) {
-        (window as any).recaptchaVerifier.clear();
-        (window as any).recaptchaVerifier = null;
+      if (isLoginMode) {
+        await signInWithEmailAndPassword(auth, email, password);
+        showToast('登录成功', 'success');
+      } else {
+        await createUserWithEmailAndPassword(auth, email, password);
+        showToast('注册成功', 'success');
+      }
+    } catch (error: any) {
+      console.error("Email auth error:", error);
+      if (error.code === 'auth/email-already-in-use') {
+        showToast('该邮箱已被注册', 'error');
+      } else if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+        showToast('邮箱或密码错误', 'error');
+      } else if (error.code === 'auth/weak-password') {
+        showToast('密码太弱，请至少输入6位字符', 'error');
+      } else {
+        showToast(isLoginMode ? '登录失败，请重试' : '注册失败，请重试', 'error');
       }
     } finally {
-      setIsSendingCode(false);
+      setIsAuthenticating(false);
     }
   };
 
-  const handleVerifyCode = async () => {
-    if (!verificationCode) {
-      showToast('请输入验证码', 'error');
+  const handleFacebookLogin = async () => {
+    if (!acceptedPrivacy) {
+      showToast('请先阅读并同意隐私政策', 'error');
       return;
     }
     try {
-      await confirmationResult.confirm(verificationCode);
-      showToast('登录成功', 'success');
+      const provider = new FacebookAuthProvider();
+      await signInWithPopup(auth, provider);
     } catch (error) {
-      console.error("Verify error:", error);
-      showToast('验证码错误', 'error');
+      console.error("Facebook login error:", error);
+      showToast('Facebook 登录失败，请重试', 'error');
     }
   };
 
@@ -476,82 +469,57 @@ export default function App() {
             请登录以继续使用，您的数据将安全地保存在云端。
           </p>
 
-          {!confirmationResult ? (
-            <div className="space-y-4 mb-6">
-              <div className="text-left">
-                <label className="text-xs font-bold text-gray-500 ml-1 mb-1 block">手机号登录</label>
-                <div className="flex gap-2">
-                  <select 
-                    value={countryCode} 
-                    onChange={(e) => setCountryCode(e.target.value)}
-                    className="bg-gray-50 px-2 py-3 rounded-xl text-sm font-medium border border-gray-200 focus:outline-none focus:border-blue-400"
-                  >
-                    <option value="+39">🇮🇹 +39</option>
-                    <option value="+86">🇨🇳 +86</option>
-                    <option value="+1">🇺🇸 +1</option>
-                    <option value="+44">🇬🇧 +44</option>
-                    <option value="+33">🇫🇷 +33</option>
-                    <option value="+49">🇩🇪 +49</option>
-                    <option value="+34">🇪🇸 +34</option>
-                  </select>
-                  <input 
-                    type="tel" 
-                    placeholder="123 456 7890" 
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    className="flex-1 bg-gray-50 px-4 py-3 rounded-xl text-sm font-medium border border-gray-200 focus:outline-none focus:border-blue-400 min-w-0"
-                  />
-                </div>
-              </div>
-              
-              <div className="flex items-start gap-2 mt-4 text-left">
-                <input 
-                  type="checkbox" 
-                  id="privacy" 
-                  checked={acceptedPrivacy}
-                  onChange={(e) => setAcceptedPrivacy(e.target.checked)}
-                  className="mt-1"
-                />
-                <label htmlFor="privacy" className="text-xs text-gray-500 leading-tight">
-                  我已阅读并同意 <button onClick={() => setShowPrivacyModal(true)} className="text-blue-600 underline">隐私政策 (Informativa sulla Privacy)</button>，同意按照 GDPR 规定处理我的个人数据。
-                </label>
-              </div>
+          <div className="space-y-4 mb-6">
+            <div className="text-left">
+              <label className="text-xs font-bold text-gray-500 ml-1 mb-1 block">邮箱</label>
+              <input 
+                type="email" 
+                placeholder="your@email.com" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full bg-gray-50 px-4 py-3 rounded-xl text-sm font-medium border border-gray-200 focus:outline-none focus:border-blue-400"
+              />
+            </div>
+            
+            <div className="text-left">
+              <label className="text-xs font-bold text-gray-500 ml-1 mb-1 block">密码</label>
+              <input 
+                type="password" 
+                placeholder="••••••••" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-gray-50 px-4 py-3 rounded-xl text-sm font-medium border border-gray-200 focus:outline-none focus:border-blue-400"
+              />
+            </div>
+            
+            <div className="flex items-start gap-2 mt-4 text-left">
+              <input 
+                type="checkbox" 
+                id="privacy" 
+                checked={acceptedPrivacy}
+                onChange={(e) => setAcceptedPrivacy(e.target.checked)}
+                className="mt-1"
+              />
+              <label htmlFor="privacy" className="text-xs text-gray-500 leading-tight">
+                我已阅读并同意 <button onClick={() => setShowPrivacyModal(true)} className="text-blue-600 underline">隐私政策 (Informativa sulla Privacy)</button>，同意按照 GDPR 规定处理我的个人数据。
+              </label>
+            </div>
 
-              <button 
-                onClick={handleSendCode}
-                disabled={isSendingCode || !phoneNumber || !acceptedPrivacy}
-                className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-lg shadow-blue-200"
-              >
-                {isSendingCode ? '发送中...' : '获取验证码'}
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4 mb-6">
-              <div className="text-left">
-                <label className="text-xs font-bold text-gray-500 ml-1 mb-1 block">输入验证码</label>
-                <input 
-                  type="text" 
-                  placeholder="6位验证码" 
-                  value={verificationCode}
-                  onChange={(e) => setVerificationCode(e.target.value)}
-                  className="w-full bg-gray-50 px-4 py-3 rounded-xl text-sm font-medium border border-gray-200 focus:outline-none focus:border-blue-400"
-                />
-              </div>
-              <button 
-                onClick={handleVerifyCode}
-                disabled={!verificationCode}
-                className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-lg shadow-blue-200"
-              >
-                验证并登录
-              </button>
-              <button 
-                onClick={() => setConfirmationResult(null)}
-                className="w-full py-2 text-gray-400 font-bold text-xs"
-              >
-                返回修改手机号
-              </button>
-            </div>
-          )}
+            <button 
+              onClick={handleEmailAuth}
+              disabled={isAuthenticating || !email || !password || !acceptedPrivacy}
+              className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-lg shadow-blue-200"
+            >
+              {isAuthenticating ? '处理中...' : (isLoginMode ? '登录' : '注册')}
+            </button>
+            
+            <button 
+              onClick={() => setIsLoginMode(!isLoginMode)}
+              className="w-full py-2 text-gray-400 font-bold text-xs hover:text-gray-600 transition-colors"
+            >
+              {isLoginMode ? '没有账号？点击注册' : '已有账号？点击登录'}
+            </button>
+          </div>
 
           <div className="relative flex items-center py-2 mb-6">
             <div className="flex-grow border-t border-gray-200"></div>
@@ -572,7 +540,15 @@ export default function App() {
             Google 登录
           </button>
           
-          <div id="recaptcha-container"></div>
+          <button 
+            onClick={handleFacebookLogin}
+            className="flex items-center justify-center gap-3 w-full py-3.5 bg-[#1877F2] text-white rounded-xl font-bold text-sm hover:bg-[#166FE5] transition-colors mb-3"
+          >
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+            </svg>
+            Facebook 登录
+          </button>
         </div>
         {showPrivacyModal && <PrivacyPolicyModal onClose={() => setShowPrivacyModal(false)} />}
       </div>
