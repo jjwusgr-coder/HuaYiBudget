@@ -78,10 +78,18 @@ export const ViewTransactionModal = ({ transaction, onClose, onEdit, onDelete, o
                     </div>
                   )}
               </div>
-              {transaction.image && (
-                <div className="pt-2" onClick={() => onViewImage(transaction.image)}>
+              {((transaction.images && transaction.images.length > 0) || transaction.image) && (
+                <div className="pt-2">
                   <h3 className="text-[10px] font-bold text-gray-400 mb-1 uppercase ml-1">附件</h3>
-                  <img src={transaction.image} className="w-full h-24 rounded-xl object-cover cursor-pointer" alt="receipt"/>
+                  <div className="flex gap-2 overflow-x-auto pb-2">
+                    {transaction.images && transaction.images.length > 0 ? (
+                      transaction.images.map((img: string, idx: number) => (
+                        <img key={idx} src={img} onClick={() => onViewImage(img)} className="w-24 h-24 flex-shrink-0 rounded-xl object-cover cursor-pointer border border-gray-100 shadow-sm" alt={`receipt-${idx}`}/>
+                      ))
+                    ) : (
+                      <img src={transaction.image} onClick={() => onViewImage(transaction.image)} className="w-24 h-24 flex-shrink-0 rounded-xl object-cover cursor-pointer border border-gray-100 shadow-sm" alt="receipt"/>
+                    )}
+                  </div>
                 </div>
               )}
               <button onClick={onDelete} className="mt-2 w-full py-3 rounded-2xl text-white font-bold text-xs bg-red-500 hover:bg-red-600">

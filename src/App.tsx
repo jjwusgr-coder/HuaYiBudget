@@ -10,7 +10,8 @@ import {
   onAuthStateChanged,
   signOut,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { 
   collection, 
@@ -84,6 +85,11 @@ export default function App() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+
+  // Batch Mode
+  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (!isFirebaseConfigured || !auth) {
@@ -159,6 +165,19 @@ export default function App() {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!email) {
+      showToast('请先输入您的邮箱地址', 'error');
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, email);
+      showToast('密码重置邮件已发送，请查收', 'success');
+    } catch (error: any) {
+      showToast('发送失败，请检查邮箱格式', 'error');
+    }
+  };
+
   const handleFacebookLogin = async () => {
     if (!acceptedPrivacy) {
       showToast('请先阅读并同意隐私政策', 'error');
@@ -173,10 +192,12 @@ export default function App() {
     }
   };
 
-  // Clear AI advice when store changes
+  // Clear AI advice and batch mode when store or tab changes
   useEffect(() => {
       setAdvisorMessage('');
-  }, [currentStoreId]);
+      setIsBatchMode(false);
+      setSelectedIds(new Set());
+  }, [currentStoreId, activeTab]);
 
   // Data Fetching
   useEffect(() => {
@@ -371,6 +392,50 @@ export default function App() {
     } catch(e) {}
   };
 
+  const toggleBatchMode = () => {
+    setIsBatchMode(!isBatchMode);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelection = (id: string) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setSelectedIds(newSet);
+  };
+
+  const executeBatchDelete = async () => {
+    try {
+      const batch = writeBatch(db);
+      selectedIds.forEach(id => {
+        batch.delete(doc(db, 'artifacts', appId, 'users', user.uid, 'transactions', id));
+      });
+      await batch.commit();
+      showToast(`已删除 ${selectedIds.size} 条记录`, 'success');
+      setIsBatchMode(false);
+      setSelectedIds(new Set());
+      setShowBatchDeleteConfirm(false);
+    } catch (e) {
+      showToast('批量删除失败', 'error');
+    }
+  };
+
+  const handleBatchStatus = async (isUnpaid: boolean) => {
+    if (selectedIds.size === 0) return;
+    try {
+      const batch = writeBatch(db);
+      selectedIds.forEach(id => {
+        batch.update(doc(db, 'artifacts', appId, 'users', user.uid, 'transactions', id), { isUnpaid });
+      });
+      await batch.commit();
+      showToast(`已标记 ${selectedIds.size} 条记录`, 'success');
+      setIsBatchMode(false);
+      setSelectedIds(new Set());
+    } catch (e) {
+      showToast('批量更新失败', 'error');
+    }
+  };
+
   const handleExport = (format: string) => {
     let data, filename, mimeType;
     if (format === 'json') {
@@ -459,8 +524,14 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 text-center font-sans">
-        <div className="bg-white p-6 rounded-3xl shadow-xl max-w-sm w-full border border-gray-100">
+      <div className="min-h-screen bg-[#e6f4f1] flex flex-col items-center justify-center p-4 text-center font-sans relative overflow-hidden">
+        {/* Background decoration */}
+        <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 pointer-events-none">
+          <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-blue-200/40 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-teal-200/30 rounded-full blur-3xl"></div>
+        </div>
+
+        <div className="bg-white/90 backdrop-blur-xl p-6 rounded-3xl shadow-xl max-w-sm w-full border border-white/50 z-10">
           <img src="/logo.png" alt="HuaYiBudget" className="w-20 h-20 mx-auto mb-3 rounded-2xl shadow-sm object-cover" />
           <h1 className="text-2xl font-black text-gray-800 mb-1 tracking-tight">HuaYiBudget</h1>
           <p className="text-gray-500 text-xs mb-5 leading-relaxed">
@@ -490,17 +561,24 @@ export default function App() {
               />
             </div>
             
-            <div className="flex items-start gap-2 mt-2 text-left">
-              <input 
-                type="checkbox" 
-                id="privacy" 
-                checked={acceptedPrivacy}
-                onChange={(e) => setAcceptedPrivacy(e.target.checked)}
-                className="mt-0.5"
-              />
-              <label htmlFor="privacy" className="text-[10px] text-gray-500 leading-tight">
-                我已阅读并同意 <button onClick={() => setShowPrivacyModal(true)} className="text-blue-600 underline">隐私政策</button>，同意按照 GDPR 规定处理我的个人数据。
-              </label>
+            <div className="flex justify-between items-start mt-2">
+              <div className="flex items-start gap-2 text-left flex-1">
+                <input 
+                  type="checkbox" 
+                  id="privacy" 
+                  checked={acceptedPrivacy}
+                  onChange={(e) => setAcceptedPrivacy(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <label htmlFor="privacy" className="text-[10px] text-gray-500 leading-tight">
+                  我已阅读并同意 <button onClick={() => setShowPrivacyModal(true)} className="text-blue-600 underline">隐私政策</button>。
+                </label>
+              </div>
+              {isLoginMode && (
+                <button onClick={handleForgotPassword} className="text-[10px] text-blue-500 hover:underline flex-shrink-0 ml-2">
+                  忘记密码？
+                </button>
+              )}
             </div>
 
             <button 
@@ -588,10 +666,37 @@ export default function App() {
                  <input type="text" placeholder="搜索..." className="w-full bg-white pl-9 pr-4 py-3 rounded-2xl shadow-sm border-none outline-none text-sm font-medium placeholder-gray-300" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                </div>
                <button onClick={() => setShowUnpaidOnly(!showUnpaidOnly)} className={`px-4 py-2.5 rounded-2xl font-bold text-xs shadow-sm border transition-colors flex items-center gap-1 ${showUnpaidOnly ? 'bg-red-50 text-red-500 border-red-100' : 'bg-white text-gray-500 border-transparent'}`}><AlertCircle size={14}/> 未付</button>
+               <button onClick={toggleBatchMode} className={`px-4 py-2.5 rounded-2xl font-bold text-xs shadow-sm border transition-colors flex items-center gap-1 ${isBatchMode ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-white text-gray-500 border-transparent'}`}>
+                 {isBatchMode ? '取消' : '多选'}
+               </button>
              </div>
+             
+             {isBatchMode && (
+               <div className="flex items-center justify-between bg-blue-50 p-3 rounded-2xl mb-4 border border-blue-100 animate-slide-up">
+                 <span className="text-xs font-bold text-blue-600 ml-2">已选 {selectedIds.size} 项</span>
+                 <div className="flex gap-2">
+                   <button onClick={() => handleBatchStatus(false)} disabled={selectedIds.size === 0} className="px-3 py-1.5 bg-white text-emerald-600 rounded-xl text-[10px] font-bold shadow-sm disabled:opacity-50">标记已付</button>
+                   <button onClick={() => handleBatchStatus(true)} disabled={selectedIds.size === 0} className="px-3 py-1.5 bg-white text-red-500 rounded-xl text-[10px] font-bold shadow-sm disabled:opacity-50">标记未付</button>
+                   <button onClick={() => setShowBatchDeleteConfirm(true)} disabled={selectedIds.size === 0} className="px-3 py-1.5 bg-red-500 text-white rounded-xl text-[10px] font-bold shadow-sm disabled:opacity-50">删除</button>
+                 </div>
+               </div>
+             )}
+
              <div className="space-y-3">
                {filteredTransactions.length === 0 ? <div className="py-10 text-center text-gray-400 text-xs font-bold">暂无记录</div> : filteredTransactions.map(t => (
-                   <TransactionItem key={t.id} data={t} onDelete={() => handleDeleteTransaction(t.id, t)} onStatusChange={() => handleUpdateStatus(t.id, t.isUnpaid)} onViewImage={setPreviewImage} onEdit={() => handleEditClick(t)} onViewDetail={() => handleViewClick(t)} storeName={isAllStoresMode ? stores.find(s=>s.id===t.storeId)?.name : null} />
+                   <TransactionItem 
+                     key={t.id} 
+                     data={t} 
+                     onDelete={() => handleDeleteTransaction(t.id, t)} 
+                     onStatusChange={() => handleUpdateStatus(t.id, t.isUnpaid)} 
+                     onViewImage={setPreviewImage} 
+                     onEdit={() => handleEditClick(t)} 
+                     onViewDetail={() => handleViewClick(t)} 
+                     storeName={isAllStoresMode ? stores.find(s=>s.id===t.storeId)?.name : null} 
+                     isBatchMode={isBatchMode}
+                     isSelected={selectedIds.has(t.id)}
+                     onToggleSelect={() => toggleSelection(t.id)}
+                   />
                ))}
              </div>
           </div>
@@ -673,8 +778,31 @@ export default function App() {
         </div>
       )}
 
+      {showBatchDeleteConfirm && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+            <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl flex flex-col items-center text-center animate-slide-up">
+                <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-red-500 mb-4">
+                    <AlertTriangle size={24} />
+                </div>
+                <h3 className="text-lg font-bold text-gray-800 mb-2">确认批量删除？</h3>
+                <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                    您正在删除选中的 <strong className="text-red-500">{selectedIds.size}</strong> 条记录。<br/>
+                    此操作将<span className="text-red-500 font-bold">永久删除</span>这些记录，且无法恢复。
+                </p>
+                <div className="flex gap-3 w-full">
+                    <button onClick={() => setShowBatchDeleteConfirm(false)} className="flex-1 py-3 bg-gray-100 rounded-xl font-bold text-gray-500 text-xs transition-colors hover:bg-gray-200">
+                        取消
+                    </button>
+                    <button onClick={executeBatchDelete} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-red-500/30 transition-transform active:scale-95">
+                        确认删除
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
       {showStoreModal && <StoreModal stores={stores} onClose={() => setShowStoreModal(false)} onSelect={setCurrentStoreId} onAdd={handleAddStore} onDelete={handleDeleteStore} onUpdate={handleUpdateStore} currentId={currentStoreId} />}
-      {showSettingsModal && <SettingsModal onClose={() => setShowSettingsModal(false)} hasStore={stores.length>0} onExport={handleExport} onImport={handleImport} onLogout={handleLogout} />}
+      {showSettingsModal && <SettingsModal onClose={() => setShowSettingsModal(false)} hasStore={stores.length>0} onExport={handleExport} onImport={handleImport} onLogout={handleLogout} user={user} />}
       {showAddModal && <AddTransactionModal onClose={() => setShowAddModal(false)} onSave={handleSaveTransaction} stores={stores} isAllMode={isAllStoresMode} defaultStoreId={isAllStoresMode && stores.length > 0 ? stores[0]?.id : currentStoreId} categories={currentStore?.categories || DEFAULT_CATEGORIES} theme={currentTheme} editingItem={editingTransaction} onUpdateCategories={handleUpdateCategories} currentStoreId={currentStoreId} showToast={showToast} />}
       {viewingTransaction && <ViewTransactionModal transaction={viewingTransaction} onClose={() => setViewingTransaction(null)} onEdit={() => handleEditClick(viewingTransaction)} onDelete={() => handleDeleteTransaction(viewingTransaction.id, viewingTransaction)} onViewImage={setPreviewImage} storeName={stores.find(s=>s.id === viewingTransaction.storeId)?.name || 'N/A'} />}
     </div>

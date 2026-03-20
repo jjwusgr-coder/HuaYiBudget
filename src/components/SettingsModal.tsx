@@ -23,13 +23,26 @@ export const BarChart = ({ label, data, total, color }: any) => {
   );
 };
 
-export const SettingsModal = ({ onClose, hasStore, onExport, onImport, onLogout }: any) => (
+export const SettingsModal = ({ onClose, hasStore, onExport, onImport, onLogout, user }: any) => (
   <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
     <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 space-y-4 animate-slide-up">
       <h2 className="font-bold text-sm text-gray-800">设置</h2>
       
       <div className="space-y-2 pb-4 border-b border-gray-100">
-        <h3 className="text-xs font-bold text-gray-400 mb-2">账号管理</h3>
+        <h3 className="text-xs font-bold text-gray-400 mb-2">当前账号</h3>
+        <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl mb-3">
+          {user?.photoURL ? (
+            <img src={user.photoURL} className="w-10 h-10 rounded-full object-cover" alt="avatar"/>
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center font-bold text-lg">
+              {user?.email?.charAt(0).toUpperCase() || 'U'}
+            </div>
+          )}
+          <div className="flex flex-col min-w-0">
+            <span className="text-sm font-bold text-gray-800 truncate">{user?.displayName || '用户'}</span>
+            <span className="text-[10px] text-gray-500 truncate">{user?.email}</span>
+          </div>
+        </div>
         <button onClick={onLogout} className="w-full flex justify-between px-4 py-3 rounded-xl font-bold text-xs bg-red-50 text-red-500 hover:bg-red-100 transition-colors">退出 / 更换账号</button>
       </div>
 

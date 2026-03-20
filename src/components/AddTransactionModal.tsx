@@ -11,7 +11,7 @@ export const AddTransactionModal = ({ onClose, onSave, stores, isAllMode, defaul
   const [note, setNote] = useState('');
   const [isUnpaid, setIsUnpaid] = useState(false);
   const [percentage, setPercentage] = useState(100);
-  const [image, setImage] = useState<string | null>(null);
+  const [images, setImages] = useState<string[]>([]);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [isManageMode, setIsManageMode] = useState(false);
   
@@ -43,7 +43,8 @@ export const AddTransactionModal = ({ onClose, onSave, stores, isAllMode, defaul
         if(editingItem.date) setDate(editingItem.date.split('T')[0]);
         setStoreId(editingItem.storeId); 
         if(editingItem.isUnpaid) setIsUnpaid(true); 
-        if(editingItem.image) setImage(editingItem.image); 
+        if(editingItem.images && editingItem.images.length > 0) setImages(editingItem.images); 
+        else if(editingItem.image) setImages([editingItem.image]);
         if(editingItem.percentage) setPercentage(editingItem.percentage);
     }
   }, [editingItem]);
@@ -70,12 +71,20 @@ export const AddTransactionModal = ({ onClose, onSave, stores, isAllMode, defaul
   };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => { 
-    const file = e.target.files?.[0]; 
-    if(file) setImage(await compressImage(file)); 
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    
+    // Limit to max 3 images to avoid payload too large
+    const newImages = await Promise.all(files.slice(0, 3).map(f => compressImage(f)));
+    setImages(prev => [...prev, ...newImages].slice(0, 3));
   };
   
-  const handleAIAnalyze = async () => {
-      if (!image) return showToast('请先上传账单截图', 'error');
+  const handleRemoveImage = (index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
+  };
+  
+  const handleAIAnalyze = async (imgData: string) => {
+      if (!imgData) return showToast('请先上传账单截图', 'error');
       setIsAnalyzing(true);
       try {
           const apiKey = getGeminiApiKey();
@@ -84,7 +93,7 @@ export const AddTransactionModal = ({ onClose, onSave, stores, isAllMode, defaul
             return;
           }
           
-          const base64Data = image.split(',')[1];
+          const base64Data = imgData.split(',')[1];
           const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
           const payload = {
               contents: [{
@@ -196,7 +205,7 @@ export const AddTransactionModal = ({ onClose, onSave, stores, isAllMode, defaul
         storeId, 
         note, 
         isUnpaid: type === 'expense' ? isUnpaid : false, 
-        image, 
+        images, 
         date: new Date(date).toISOString() 
     }, editingItem?.id);
   };
@@ -299,18 +308,29 @@ export const AddTransactionModal = ({ onClose, onSave, stores, isAllMode, defaul
          </div>
          
          {/* ✨ AI Receipt Scanner UI */}
-         <div className="flex gap-2 h-12">
-            <label className={`flex-1 h-12 rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 transition-colors cursor-pointer ${image ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'}`}>
-                {image ? <Check size={16}/> : <ImageIcon size={16}/>}
-                <span className="text-xs font-bold">{image ? '重新选择' : '上传小票/图片'}</span>
-                <input type="file" accept="image/*" className="hidden" onChange={handleFile}/>
-            </label>
-            
-            {image && (
-                <button onClick={handleAIAnalyze} disabled={isAnalyzing} className="flex-1 h-12 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-600 font-bold text-xs flex items-center justify-center gap-1 transition-all active:scale-95 shadow-sm disabled:opacity-50">
-                    {isAnalyzing ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                    {isAnalyzing ? '正在提取...' : '✨ AI智能提取'}
-                </button>
+         <div className="flex flex-col gap-2">
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {images.map((img, idx) => (
+                <div key={idx} className="relative w-16 h-16 flex-shrink-0 rounded-xl border border-gray-200 overflow-hidden group">
+                  <img src={img} alt="receipt" className="w-full h-full object-cover" />
+                  <button onClick={() => handleRemoveImage(idx)} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <X size={12} />
+                  </button>
+                  <button onClick={() => handleAIAnalyze(img)} disabled={isAnalyzing} className="absolute bottom-0 left-0 right-0 bg-indigo-500/80 text-white text-[8px] py-0.5 text-center font-bold opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50">
+                    AI提取
+                  </button>
+                </div>
+              ))}
+              {images.length < 3 && (
+                <label className="w-16 h-16 flex-shrink-0 rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1 text-gray-400 hover:bg-gray-50 transition-colors cursor-pointer">
+                    <ImageIcon size={16}/>
+                    <span className="text-[8px] font-bold">添加图片</span>
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleFile}/>
+                </label>
+              )}
+            </div>
+            {images.length > 0 && (
+                <p className="text-[10px] text-gray-400 ml-1">点击图片上的 "AI提取" 识别账单内容 (最多3张)</p>
             )}
          </div>
 
