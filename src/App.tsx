@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, Settings, ChevronDown, Search, AlertCircle, RefreshCw, Store, 
-  ListFilter, LayoutList, BarChart3, Layers, Sparkles, X, PieChart, Bot, AlertTriangle
+  ListFilter, LayoutList, BarChart3, Layers, Sparkles, X, PieChart, Bot, AlertTriangle, Wallet, Leaf
 } from 'lucide-react';
 import { 
   signInWithPopup, 
@@ -56,6 +56,7 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const [stores, setStores] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [profile, setProfile] = useState<any>(null);
   const [currentStoreId, setCurrentStoreId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   
@@ -214,7 +215,12 @@ export default function App() {
       list.sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
       setTransactions(list);
     });
-    return () => { unsubStores(); unsubTrans(); };
+    const unsubProfile = onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'info'), (docSnap) => {
+      if (docSnap.exists()) {
+        setProfile(docSnap.data());
+      }
+    });
+    return () => { unsubStores(); unsubTrans(); unsubProfile(); };
   }, [user, currentStoreId]);
 
   const isAllStoresMode = currentStoreId === 'ALL';
@@ -532,8 +538,12 @@ export default function App() {
         </div>
 
         <div className="bg-white/90 backdrop-blur-xl p-6 rounded-3xl shadow-xl max-w-sm w-full border border-white/50 z-10">
-          <img src="/logo.png" alt="HuaYiBudget" className="w-20 h-20 mx-auto mb-3 rounded-2xl shadow-sm object-cover" />
-          <h1 className="text-2xl font-black text-gray-800 mb-1 tracking-tight">HuaYiBudget</h1>
+          <div className="w-20 h-20 mx-auto mb-4 rounded-[1.5rem] bg-gradient-to-br from-blue-500 to-teal-400 shadow-lg shadow-blue-500/30 flex items-center justify-center text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-12 h-12 bg-white/20 rounded-full blur-md transform translate-x-4 -translate-y-4"></div>
+            <Wallet size={36} strokeWidth={1.5} className="z-10" />
+            <Leaf size={16} strokeWidth={2} className="absolute bottom-4 right-4 text-teal-100 z-10" />
+          </div>
+          <h1 className="text-3xl font-black text-gray-800 mb-1 tracking-tighter font-display">HuaYi</h1>
           <p className="text-gray-500 text-xs mb-5 leading-relaxed">
             请登录以继续使用，您的数据将安全地保存在云端。
           </p>
@@ -646,7 +656,15 @@ export default function App() {
             <div className="flex items-center gap-1 text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-wide">切换店铺 <ChevronDown size={10} strokeWidth={3}/></div>
           </div>
         </div>
-        <button onClick={() => setShowSettingsModal(true)} className="p-2.5 bg-white text-gray-400 hover:text-gray-600 rounded-full border border-gray-100 shadow-sm"><Settings size={20}/></button>
+        <button onClick={() => setShowSettingsModal(true)} className="w-10 h-10 rounded-full bg-white border border-gray-200 shadow-sm overflow-hidden flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors active:scale-95">
+          {profile?.avatar || user?.photoURL ? (
+            <img src={profile?.avatar || user?.photoURL} alt="avatar" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full bg-blue-100 text-blue-500 flex items-center justify-center font-bold text-lg">
+              {user?.email?.charAt(0).toUpperCase() || 'U'}
+            </div>
+          )}
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-32 scrollbar-hide">
@@ -802,7 +820,7 @@ export default function App() {
       )}
 
       {showStoreModal && <StoreModal stores={stores} onClose={() => setShowStoreModal(false)} onSelect={setCurrentStoreId} onAdd={handleAddStore} onDelete={handleDeleteStore} onUpdate={handleUpdateStore} currentId={currentStoreId} />}
-      {showSettingsModal && <SettingsModal onClose={() => setShowSettingsModal(false)} hasStore={stores.length>0} onExport={handleExport} onImport={handleImport} onLogout={handleLogout} user={user} />}
+      {showSettingsModal && <SettingsModal onClose={() => setShowSettingsModal(false)} hasStore={stores.length>0} onExport={handleExport} onImport={handleImport} onLogout={handleLogout} user={user} profile={profile} db={db} appId={appId} />}
       {showAddModal && <AddTransactionModal onClose={() => setShowAddModal(false)} onSave={handleSaveTransaction} stores={stores} isAllMode={isAllStoresMode} defaultStoreId={isAllStoresMode && stores.length > 0 ? stores[0]?.id : currentStoreId} categories={currentStore?.categories || DEFAULT_CATEGORIES} theme={currentTheme} editingItem={editingTransaction} onUpdateCategories={handleUpdateCategories} currentStoreId={currentStoreId} showToast={showToast} />}
       {viewingTransaction && <ViewTransactionModal transaction={viewingTransaction} onClose={() => setViewingTransaction(null)} onEdit={() => handleEditClick(viewingTransaction)} onDelete={() => handleDeleteTransaction(viewingTransaction.id, viewingTransaction)} onViewImage={setPreviewImage} storeName={stores.find(s=>s.id === viewingTransaction.storeId)?.name || 'N/A'} />}
     </div>
