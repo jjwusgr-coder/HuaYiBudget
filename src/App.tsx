@@ -6,7 +6,6 @@ import {
 import { 
   signInWithPopup, 
   GoogleAuthProvider,
-  FacebookAuthProvider,
   onAuthStateChanged,
   signOut,
   signInWithEmailAndPassword,
@@ -30,7 +29,7 @@ import {
 } from 'firebase/firestore';
 
 import { auth, db, appId, isFirebaseConfigured } from './lib/firebase';
-import { getGeminiApiKey, fetchWithBackoff } from './lib/gemini';
+import { getGeminiApiKey, fetchWithBackoff, getGeminiClient } from './lib/gemini';
 import { THEMES, ALL_STORES_THEME, DEFAULT_CATEGORIES } from './constants';
 import { dataToCsv, parseCsvToTransactions, deepSerializeData } from './utils/helpers';
 
@@ -40,10 +39,12 @@ import { DashboardCard } from './components/DashboardCard';
 import { TransactionItem } from './components/TransactionItem';
 import { ViewTransactionModal } from './components/ViewTransactionModal';
 import { AddTransactionModal } from './components/AddTransactionModal';
+import { CategoryManagementModal } from './components/CategoryManagementModal';
 import { StoreModal } from './components/StoreModal';
 import { SettingsModal, BarChart } from './components/SettingsModal';
 
 import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
+import { AIChatModal } from './components/AIChatModal';
 
 const NavBtn = ({ icon: Icon, label, active, onClick, color }: any) => (
   <button onClick={onClick} className={`flex flex-col items-center gap-0.5 p-2 transition-all ${active ? color : 'text-gray-300'}`}>
@@ -73,10 +74,12 @@ export default function App() {
   
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<any>(null);
   const [viewingTransaction, setViewingTransaction] = useState<any>(null); 
   const [showStoreModal, setShowStoreModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showAIChatModal, setShowAIChatModal] = useState(false);
   const [storeToDelete, setStoreToDelete] = useState<any>(null);
 
   // Auth
@@ -166,7 +169,8 @@ export default function App() {
     }
   };
 
-  const handleForgotPassword = async () => {
+  const handleForgotPassword = async (e: React.MouseEvent) => {
+    e.preventDefault();
     if (!email) {
       showToast('请先输入您的邮箱地址', 'error');
       return;
@@ -176,20 +180,6 @@ export default function App() {
       showToast('密码重置邮件已发送，请查收', 'success');
     } catch (error: any) {
       showToast('发送失败，请检查邮箱格式', 'error');
-    }
-  };
-
-  const handleFacebookLogin = async () => {
-    if (!acceptedPrivacy) {
-      showToast('请先阅读并同意隐私政策', 'error');
-      return;
-    }
-    try {
-      const provider = new FacebookAuthProvider();
-      await signInWithPopup(auth, provider);
-    } catch (error) {
-      console.error("Facebook login error:", error);
-      showToast('Facebook 登录失败，请重试', 'error');
     }
   };
 
@@ -265,23 +255,23 @@ export default function App() {
     setIsAdvising(true);
     setAdvisorMessage('');
     try {
-        const apiKey = getGeminiApiKey();
-        if (!apiKey) {
+        const ai = getGeminiClient();
+        if (!ai) {
           showToast('请先配置 Gemini API Key', 'error');
           return;
         }
         
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
         const prompt = `我当前的账单数据如下：总收入 ${stats.income} 欧元，总支出 ${stats.expense} 欧元，结余 ${stats.balance} 欧元。主要支出分类及金额：${Object.entries(stats.expCats).map(([k,v]) => `${k} ${v}欧`).join(', ')}。请给我一段简短的财务分析和建议（中文，不超过60个字，语气友好、鼓励）。`;
-        const payload = {
-            contents: [{ parts: [{ text: prompt }] }],
-            systemInstruction: { parts: [{ text: "You are a friendly and professional financial advisor." }] }
-        };
-        const data = await fetchWithBackoff(url, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        
+        const response = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: prompt,
+          config: {
+            systemInstruction: "You are a friendly and professional financial advisor."
+          }
         });
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if(text) setAdvisorMessage(text);
+        
+        if(response.text) setAdvisorMessage(response.text);
         else throw new Error('No text returned');
     } catch (e) {
         showToast('获取 AI 建议失败，请稍后再试', 'error');
@@ -375,10 +365,12 @@ export default function App() {
         type: 'neutral',
         undoAction: async () => {
           await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'transactions', id), data);
-          setToast({ message: '已撤销', type: 'success' });
+          showToast('已撤销', 'success');
         }
       });
-      setTimeout(() => { if(toast?.undoAction) setToast(null); }, 4000);
+      setTimeout(() => { 
+        setToast((prev: any) => prev?.message === '记录已删除' ? null : prev); 
+      }, 4000);
     } catch (e) { showToast('删除失败', 'error'); }
   };
 
@@ -571,21 +563,21 @@ export default function App() {
               />
             </div>
             
-            <div className="flex justify-between items-start mt-2">
-              <div className="flex items-start gap-2 text-left flex-1">
+            <div className="flex justify-between items-center mt-2 mb-4">
+              <div className="flex items-center gap-2 text-left">
                 <input 
                   type="checkbox" 
                   id="privacy" 
                   checked={acceptedPrivacy}
                   onChange={(e) => setAcceptedPrivacy(e.target.checked)}
-                  className="mt-0.5"
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <label htmlFor="privacy" className="text-[10px] text-gray-500 leading-tight">
-                  我已阅读并同意 <button onClick={() => setShowPrivacyModal(true)} className="text-blue-600 underline">隐私政策</button>。
+                  我已阅读并同意 <button type="button" onClick={(e) => { e.preventDefault(); setShowPrivacyModal(true); }} className="text-blue-600 underline relative z-20">隐私政策</button>。
                 </label>
               </div>
               {isLoginMode && (
-                <button onClick={handleForgotPassword} className="text-[10px] text-blue-500 hover:underline flex-shrink-0 ml-2">
+                <button type="button" onClick={handleForgotPassword} className="text-[11px] font-bold text-blue-500 hover:text-blue-600 relative z-20 whitespace-nowrap">
                   忘记密码？
                 </button>
               )}
@@ -625,16 +617,6 @@ export default function App() {
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
               </svg>
               Google 登录
-            </button>
-            
-            <button 
-              onClick={handleFacebookLogin}
-              className="flex items-center justify-center gap-2 w-full py-2.5 bg-[#1877F2] text-white rounded-xl font-bold text-sm hover:bg-[#166FE5] transition-colors"
-            >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-              </svg>
-              Facebook 登录
             </button>
           </div>
         </div>
@@ -687,6 +669,11 @@ export default function App() {
                <button onClick={toggleBatchMode} className={`px-4 py-2.5 rounded-2xl font-bold text-xs shadow-sm border transition-colors flex items-center gap-1 ${isBatchMode ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-white text-gray-500 border-transparent'}`}>
                  {isBatchMode ? '取消' : '多选'}
                </button>
+               {!isAllStoresMode && (
+                 <button onClick={() => setShowCategoryModal(true)} className="px-4 py-2.5 rounded-2xl font-bold text-xs shadow-sm border border-transparent bg-white text-gray-500 transition-colors flex items-center gap-1">
+                   分类
+                 </button>
+               )}
              </div>
              
              {isBatchMode && (
@@ -751,6 +738,7 @@ export default function App() {
       </div>
 
       <div className="fixed bottom-24 left-1/2 -translate-x-1/2 flex items-center gap-4 z-40">
+         <button onClick={() => setShowAIChatModal(true)} className="w-12 h-12 rounded-full flex items-center justify-center text-indigo-500 bg-white shadow-lg shadow-indigo-500/20 transition-transform active:scale-95 border-2 border-indigo-50"><Bot size={24} /></button>
          <button onClick={() => { if(stores.length>0) { setEditingTransaction(null); setShowAddModal(true); } else { showToast('请先创建店铺', 'error'); setShowStoreModal(true); }}} className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-xl shadow-blue-500/40 transition-transform active:scale-95 border-4 border-white bg-gradient-to-tr ${currentTheme.from} ${currentTheme.to}`}><Plus size={28} strokeWidth={3} /></button>
       </div>
 
@@ -820,8 +808,10 @@ export default function App() {
       )}
 
       {showStoreModal && <StoreModal stores={stores} onClose={() => setShowStoreModal(false)} onSelect={setCurrentStoreId} onAdd={handleAddStore} onDelete={handleDeleteStore} onUpdate={handleUpdateStore} currentId={currentStoreId} />}
-      {showSettingsModal && <SettingsModal onClose={() => setShowSettingsModal(false)} hasStore={stores.length>0} onExport={handleExport} onImport={handleImport} onLogout={handleLogout} user={user} profile={profile} db={db} appId={appId} />}
+      {showSettingsModal && <SettingsModal onClose={() => setShowSettingsModal(false)} hasStore={stores.length>0} onExport={handleExport} onImport={handleImport} onLogout={handleLogout} user={user} profile={profile} db={db} appId={appId} showToast={showToast} />}
+      {showAIChatModal && <AIChatModal onClose={() => setShowAIChatModal(false)} transactions={transactions} stats={stats} theme={currentTheme} />}
       {showAddModal && <AddTransactionModal onClose={() => setShowAddModal(false)} onSave={handleSaveTransaction} stores={stores} isAllMode={isAllStoresMode} defaultStoreId={isAllStoresMode && stores.length > 0 ? stores[0]?.id : currentStoreId} categories={currentStore?.categories || DEFAULT_CATEGORIES} theme={currentTheme} editingItem={editingTransaction} onUpdateCategories={handleUpdateCategories} currentStoreId={currentStoreId} showToast={showToast} />}
+      {showCategoryModal && <CategoryManagementModal onClose={() => setShowCategoryModal(false)} categories={currentStore?.categories || DEFAULT_CATEGORIES} onUpdateCategories={handleUpdateCategories} storeId={currentStoreId} showToast={showToast} />}
       {viewingTransaction && <ViewTransactionModal transaction={viewingTransaction} onClose={() => setViewingTransaction(null)} onEdit={() => handleEditClick(viewingTransaction)} onDelete={() => handleDeleteTransaction(viewingTransaction.id, viewingTransaction)} onViewImage={setPreviewImage} storeName={stores.find(s=>s.id === viewingTransaction.storeId)?.name || 'N/A'} />}
     </div>
   );

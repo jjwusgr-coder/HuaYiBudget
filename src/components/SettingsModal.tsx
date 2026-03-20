@@ -25,7 +25,7 @@ export const BarChart = ({ label, data, total, color }: any) => {
   );
 };
 
-export const SettingsModal = ({ onClose, hasStore, onExport, onImport, onLogout, user, profile, db, appId }: any) => {
+export const SettingsModal = ({ onClose, hasStore, onExport, onImport, onLogout, user, profile, db, appId, showToast }: any) => {
   const [isUploading, setIsUploading] = useState(false);
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -34,12 +34,14 @@ export const SettingsModal = ({ onClose, hasStore, onExport, onImport, onLogout,
     
     setIsUploading(true);
     try {
-      const base64Image = await compressImage(file);
+      const base64Image = await compressImage(file, 200);
       await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'info'), { 
         avatar: base64Image 
       }, { merge: true });
+      if (showToast) showToast('头像更新成功', 'success');
     } catch (error) {
       console.error("Failed to upload avatar:", error);
+      if (showToast) showToast('头像上传失败，请尝试其他图片', 'error');
     } finally {
       setIsUploading(false);
     }
@@ -55,16 +57,16 @@ export const SettingsModal = ({ onClose, hasStore, onExport, onImport, onLogout,
         <div className="space-y-2 pb-4 border-b border-gray-100">
           <h3 className="text-xs font-bold text-gray-400 mb-2">当前账号</h3>
           <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl mb-3">
-            <div className="relative group">
+            <div className="relative">
               {displayAvatar ? (
-                <img src={displayAvatar} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm" alt="avatar"/>
+                <img src={displayAvatar} className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-sm" alt="avatar"/>
               ) : (
-                <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center font-bold text-xl border-2 border-white shadow-sm">
+                <div className="w-14 h-14 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center font-bold text-2xl border-2 border-white shadow-sm">
                   {user?.email?.charAt(0).toUpperCase() || 'U'}
                 </div>
               )}
-              <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
-                {isUploading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/> : <Camera size={16} />}
+              <label className="absolute -bottom-1 -right-1 w-6 h-6 bg-white rounded-full shadow-md flex items-center justify-center cursor-pointer border border-gray-100 text-gray-500 hover:text-blue-500 transition-colors">
+                {isUploading ? <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/> : <Camera size={12} />}
                 <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} disabled={isUploading} />
               </label>
             </div>

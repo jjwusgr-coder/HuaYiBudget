@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Mic, Check, Image as ImageIcon, Sparkles, RefreshCw, ArrowUp, ArrowDown, Pencil, Trash2, Percent, Calendar } from 'lucide-react';
-import { getGeminiApiKey, fetchWithBackoff } from '../lib/gemini';
+import { getGeminiApiKey, fetchWithBackoff, getGeminiClient } from '../lib/gemini';
+import { Type } from '@google/genai';
 import { compressImage, parseVoiceInput } from '../utils/helpers';
 
 export const AddTransactionModal = ({ onClose, onSave, stores, isAllMode, defaultStoreId, categories, theme, editingItem, onUpdateCategories, currentStoreId, showToast }: any) => {
@@ -87,40 +88,36 @@ export const AddTransactionModal = ({ onClose, onSave, stores, isAllMode, defaul
       if (!imgData) return showToast('请先上传账单截图', 'error');
       setIsAnalyzing(true);
       try {
-          const apiKey = getGeminiApiKey();
-          if (!apiKey) {
+          const ai = getGeminiClient();
+          if (!ai) {
             showToast('请先配置 Gemini API Key', 'error');
             return;
           }
           
           const base64Data = imgData.split(',')[1];
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-          const payload = {
-              contents: [{
-                  role: "user",
-                  parts: [
-                      { text: "提取这张小票或账单中的信息。" },
-                      { inlineData: { mimeType: "image/jpeg", data: base64Data } }
-                  ]
-              }],
-              generationConfig: { 
+          const mimeType = imgData.split(';')[0].split(':')[1] || "image/jpeg";
+          
+          const response = await ai.models.generateContent({
+              model: 'gemini-2.5-flash',
+              contents: [
+                  { inlineData: { mimeType, data: base64Data } },
+                  "提取这张小票或账单中的信息。"
+              ],
+              config: {
                   responseMimeType: "application/json",
                   responseSchema: {
-                      type: "OBJECT",
+                      type: Type.OBJECT,
                       properties: {
-                          amount: { type: "NUMBER", description: "提取的金额数字" },
-                          type: { type: "STRING", enum: ["expense", "income"], description: "如果是付款/支出选expense，收款/退款选income" },
-                          category: { type: "STRING", description: "从以下分类中选最匹配的一个：餐饮, 交通, 购物, 房租, 水电, 进货, 营销, 杂项, 销售, 服务" },
-                          note: { type: "STRING", description: "账单的具体项目描述，如'两杯咖啡'，不超过10个字" }
+                          amount: { type: Type.NUMBER, description: "提取的金额数字" },
+                          type: { type: Type.STRING, enum: ["expense", "income"], description: "如果是付款/支出选expense，收款/退款选income" },
+                          category: { type: Type.STRING, description: "从以下分类中选最匹配的一个：餐饮, 交通, 购物, 房租, 水电, 进货, 营销, 杂项, 销售, 服务" },
+                          note: { type: Type.STRING, description: "账单的具体项目描述，如'两杯咖啡'，不超过10个字" }
                       }
                   }
               }
-          };
-          const data = await fetchWithBackoff(url, {
-              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
           });
           
-          const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          const resultText = response.text;
           if (resultText) {
               const parsed = JSON.parse(resultText);
               if (parsed.amount) setAmount(parsed.amount.toString());

@@ -1,6 +1,14 @@
+import { GoogleGenAI } from "@google/genai";
+
 export const getGeminiApiKey = () => {
   // 优先使用 process.env (AI Studio 注入)，其次使用 import.meta.env (本地环境)
   return process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || '';
+};
+
+export const getGeminiClient = () => {
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) return null;
+  return new GoogleGenAI({ apiKey });
 };
 
 export const fetchWithBackoff = async (url: string, options: RequestInit, retries = 5, delay = 1000): Promise<any> => {
