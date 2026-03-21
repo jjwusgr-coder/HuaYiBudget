@@ -97,9 +97,9 @@ export const TransactionItem = ({ data, onDelete, onStatusChange, onViewImage, o
          <div className="flex items-center gap-2 flex-shrink-0 pl-2">
             {data.isUnpaid && !isBatchMode && (
                 <button 
-                  onClick={(e)=>{e.stopPropagation(); onStatusChange()}} 
-                  onTouchStart={(e)=>{e.stopPropagation()}}
-                  onTouchEnd={(e)=>{e.stopPropagation()}}
+                  onClick={(e)=>{e.preventDefault(); e.stopPropagation(); onStatusChange();}} 
+                  onTouchStart={(e)=>{e.stopPropagation();}}
+                  onTouchEnd={(e)=>{e.preventDefault(); e.stopPropagation(); onStatusChange();}}
                   className="text-[10px] font-bold text-red-500 border border-red-100 bg-red-50 px-2 py-1 rounded-lg hover:bg-red-100 transition-colors"
                 >
                   标记已付

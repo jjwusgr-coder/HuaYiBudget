@@ -6,8 +6,12 @@ import Cropper from 'react-easy-crop';
 
 const getCroppedImg = async (imageSrc: string, pixelCrop: any): Promise<string> => {
   const image = new Image();
+  const promise = new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = reject;
+  });
   image.src = imageSrc;
-  await new Promise(resolve => image.onload = resolve);
+  await promise;
   const canvas = document.createElement('canvas');
   canvas.width = 200;
   canvas.height = 200;
@@ -103,7 +107,7 @@ export const SettingsModal = ({ onClose, hasStore, onExport, onImport, onLogout,
           <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl mb-3">
             <div className="relative">
               {displayAvatar ? (
-                <img src={displayAvatar} className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-sm" alt="avatar"/>
+                <img src={displayAvatar} referrerPolicy="no-referrer" className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-sm" alt="avatar"/>
               ) : (
                 <div className="w-14 h-14 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center font-bold text-2xl border-2 border-white shadow-sm">
                   {user?.email?.charAt(0).toUpperCase() || 'U'}

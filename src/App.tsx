@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, Settings, ChevronDown, Search, AlertCircle, RefreshCw, Store, 
-  ListFilter, LayoutList, BarChart3, Layers, Sparkles, X, PieChart, Bot, AlertTriangle, Wallet, Leaf, Bell
+  ListFilter, LayoutList, BarChart3, Layers, Sparkles, X, PieChart, Bot, AlertTriangle, Wallet, Leaf, Bell, Eye, EyeOff
 } from 'lucide-react';
 import { 
   signInWithPopup, 
@@ -84,6 +84,7 @@ export default function App() {
   // Auth
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
@@ -419,8 +420,15 @@ export default function App() {
 
   const handleUpdateStatus = async (id: string, currentStatus: boolean) => {
     try {
-      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'transactions', id), { isUnpaid: !currentStatus });
-    } catch(e) {}
+      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'transactions', id), { 
+        isUnpaid: !currentStatus,
+        updatedAt: serverTimestamp()
+      });
+      showToast('状态已更新', 'success');
+    } catch(e) {
+      console.error(e);
+      showToast('更新失败', 'error');
+    }
   };
 
   const toggleBatchMode = () => {
@@ -585,15 +593,24 @@ export default function App() {
               />
             </div>
             
-            <div className="text-left">
+            <div className="text-left relative">
               <label className="text-[10px] font-bold text-gray-500 ml-1 mb-1 block">密码</label>
-              <input 
-                type="password" 
-                placeholder="••••••••" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-gray-50 px-3 py-2.5 rounded-xl text-sm font-medium border border-gray-200 focus:outline-none focus:border-blue-400"
-              />
+              <div className="relative">
+                <input 
+                  type={showPassword ? "text" : "password"} 
+                  placeholder="••••••••" 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-gray-50 px-3 py-2.5 pr-10 rounded-xl text-sm font-medium border border-gray-200 focus:outline-none focus:border-blue-400"
+                />
+                <button 
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </div>
             
             <div className="flex justify-between items-center mt-2 mb-4">
@@ -678,7 +695,7 @@ export default function App() {
         </div>
         <button onClick={() => setShowSettingsModal(true)} className="w-10 h-10 rounded-full bg-white border border-gray-200 shadow-sm overflow-hidden flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors active:scale-95">
           {profile?.avatar || user?.photoURL ? (
-            <img src={profile?.avatar || user?.photoURL} alt="avatar" className="w-full h-full object-cover" />
+            <img src={profile?.avatar || user?.photoURL} referrerPolicy="no-referrer" alt="avatar" className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full bg-blue-100 text-blue-500 flex items-center justify-center font-bold text-lg">
               {user?.email?.charAt(0).toUpperCase() || 'U'}

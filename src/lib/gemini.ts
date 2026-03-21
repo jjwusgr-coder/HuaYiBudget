@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 
 export const getGeminiApiKey = () => {
   // 优先使用 process.env (AI Studio 注入)，其次使用 import.meta.env (本地环境)，最后使用用户提供的密钥
-  return process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || 'AIzaSyD2mrrOv-4p-EjvbLBJGxiLjOoe8KW72nQ';
+  return process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || '';
 };
 
 export const getGeminiClient = () => {
