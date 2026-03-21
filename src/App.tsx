@@ -29,9 +29,8 @@ import {
 } from 'firebase/firestore';
 
 import { auth, db, appId, isFirebaseConfigured } from './lib/firebase';
-import { getGeminiApiKey, fetchWithBackoff, getGeminiClient } from './lib/gemini';
 import { THEMES, ALL_STORES_THEME, DEFAULT_CATEGORIES } from './constants';
-import { dataToCsv, parseCsvToTransactions, deepSerializeData } from './utils/helpers';
+import { dataToCsv, parseCsvToTransactions, deepSerializeData, formatMoney } from './utils/helpers';
 
 // Components
 import { GlobalStyles } from './components/GlobalStyles';
@@ -43,7 +42,6 @@ import { StoreModal } from './components/StoreModal';
 import { SettingsModal, BarChart } from './components/SettingsModal';
 
 import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
-import { AIChatModal } from './components/AIChatModal';
 
 const NavBtn = ({ icon: Icon, label, active, onClick, color, badge }: any) => (
   <button onClick={onClick} className={`relative flex flex-col items-center gap-0.5 p-2 transition-all ${active ? color : 'text-gray-300'}`}>
@@ -64,13 +62,11 @@ export default function App() {
   // UI
   const [searchTerm, setSearchTerm] = useState('');
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
+  const [statsFilterType, setStatsFilterType] = useState<string>('current_month');
+  const [statsCustomRange, setStatsCustomRange] = useState<{start: string, end: string}>({start: '', end: ''});
   const [toast, setToast] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('list');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  
-  // AI Advisor State
-  const [advisorMessage, setAdvisorMessage] = useState('');
-  const [isAdvising, setIsAdvising] = useState(false);
   
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -78,7 +74,6 @@ export default function App() {
   const [viewingTransaction, setViewingTransaction] = useState<any>(null); 
   const [showStoreModal, setShowStoreModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [showAIChatModal, setShowAIChatModal] = useState(false);
   const [storeToDelete, setStoreToDelete] = useState<any>(null);
 
   // Auth
@@ -192,9 +187,8 @@ export default function App() {
     }
   };
 
-  // Clear AI advice and batch mode when store or tab changes
+  // Clear batch mode when store or tab changes
   useEffect(() => {
-      setAdvisorMessage('');
       setIsBatchMode(false);
       setSelectedIds(new Set());
   }, [currentStoreId, activeTab]);
@@ -269,7 +263,29 @@ export default function App() {
   }, [transactions, currentStoreId, searchTerm, showUnpaidOnly, isAllStoresMode]);
 
   const stats = useMemo(() => {
-    const target = isAllStoresMode ? transactions : transactions.filter(t => t.storeId === currentStoreId);
+    let target = isAllStoresMode ? transactions : transactions.filter(t => t.storeId === currentStoreId);
+    
+    const now = new Date();
+    target = target.filter(t => {
+      if (!t.date) return false;
+      const d = new Date(t.date);
+      if (statsFilterType === 'current_month') {
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      } else if (statsFilterType === 'last_month') {
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        return d.getFullYear() === lastMonth.getFullYear() && d.getMonth() === lastMonth.getMonth();
+      } else if (statsFilterType === 'this_year') {
+        return d.getFullYear() === now.getFullYear();
+      } else if (statsFilterType === 'custom') {
+        if (!statsCustomRange.start || !statsCustomRange.end) return true;
+        const start = new Date(statsCustomRange.start);
+        const end = new Date(statsCustomRange.end);
+        end.setHours(23, 59, 59, 999);
+        return d >= start && d <= end;
+      }
+      return true; // 'all'
+    });
+
     let inc = 0, exp = 0;
     const incCats: any = {}, expCats: any = {};
     target.forEach(t => {
@@ -278,40 +294,11 @@ export default function App() {
       else { exp += v; expCats[t.category] = (expCats[t.category] || 0) + v; }
     });
     return { income: inc, expense: exp, balance: inc - exp, incCats, expCats };
-  }, [transactions, currentStoreId, isAllStoresMode]);
+  }, [transactions, currentStoreId, isAllStoresMode, statsFilterType, statsCustomRange]);
 
   const showToast = (msg: string, type = 'neutral') => {
     setToast({ message: msg, type });
     setTimeout(() => setToast(null), 3000);
-  };
-
-  const getAIAdvice = async () => {
-    setIsAdvising(true);
-    setAdvisorMessage('');
-    try {
-        const ai = getGeminiClient();
-        if (!ai) {
-          showToast('请先配置 Gemini API Key', 'error');
-          return;
-        }
-        
-        const prompt = `我当前的账单数据如下：总收入 ${stats.income} 欧元，总支出 ${stats.expense} 欧元，结余 ${stats.balance} 欧元。主要支出分类及金额：${Object.entries(stats.expCats).map(([k,v]) => `${k} ${v}欧`).join(', ')}。请给我一段简短的财务分析和建议（中文，不超过60个字，语气友好、鼓励）。`;
-        
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: prompt,
-          config: {
-            systemInstruction: "You are a friendly and professional financial advisor."
-          }
-        });
-        
-        if(response.text) setAdvisorMessage(response.text);
-        else throw new Error('No text returned');
-    } catch (e) {
-        showToast('获取 AI 建议失败，请稍后再试', 'error');
-    } finally {
-        setIsAdvising(false);
-    }
   };
 
   const handleAddStore = async (name: string, theme: string, customColor?: string) => {
@@ -706,7 +693,7 @@ export default function App() {
 
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-32 scrollbar-hide">
         {stores.length > 0 || isAllStoresMode ? (
-          <DashboardCard theme={currentTheme} stats={stats} isAllMode={isAllStoresMode} onSwipe={handleStoreSwipe} dots={!isAllStoresMode ? { current: stores.findIndex(s=>s.id===currentStoreId), total: stores.length } : null} />
+          <DashboardCard theme={currentTheme} stats={stats} isAllMode={isAllStoresMode} onSwipe={handleStoreSwipe} dots={!isAllStoresMode ? { current: stores.findIndex(s=>s.id===currentStoreId), total: stores.length } : null} filterType={statsFilterType} />
         ) : (
           <div onClick={() => setShowStoreModal(true)} className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-3xl h-48 text-gray-400 mb-6 cursor-pointer hover:bg-white transition-colors">
             <Plus size={32} className="mb-2 opacity-50"/><span className="font-bold">点击创建第一个店铺</span>
@@ -803,22 +790,38 @@ export default function App() {
 
         {activeTab === 'stats' && stores.length > 0 && (
           <div className="space-y-4 animate-fade-in">
-             {/* ✨ AI 财务管家卡片 */}
-             <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-5 rounded-3xl shadow-lg text-white relative overflow-hidden">
-                 <Bot className="absolute top-[-10px] right-[-10px] text-white/10 w-32 h-32" />
-                 <h3 className="font-bold text-sm mb-2 flex items-center gap-2 relative z-10"><Sparkles size={16}/> ✨ AI 财务分析</h3>
-                 
-                 {advisorMessage ? (
-                     <p className="text-sm leading-relaxed relative z-10 font-medium bg-black/10 p-3 rounded-xl backdrop-blur-sm shadow-inner">{advisorMessage}</p>
-                 ) : (
-                     <div className="relative z-10">
-                         <p className="text-xs text-white/80 mb-3">让 Gemini AI 为您分析本月收支状况，获取智能省钱和理财建议。</p>
-                         <button onClick={getAIAdvice} disabled={isAdvising} className="bg-white text-indigo-600 font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-2 shadow-sm hover:bg-indigo-50 transition-colors active:scale-95 disabled:opacity-50">
-                             {isAdvising ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                             {isAdvising ? 'AI 正在分析您的账单...' : '一键生成分析报告'}
-                         </button>
-                     </div>
-                 )}
+             <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+               <div className="flex items-center justify-between mb-4">
+                 <h3 className="font-bold text-sm text-gray-800 flex items-center gap-2"><PieChart size={16} className="text-blue-500"/> 统计范围</h3>
+                 <select 
+                   value={statsFilterType} 
+                   onChange={(e) => setStatsFilterType(e.target.value)}
+                   className="text-xs font-bold text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 outline-none"
+                 >
+                   <option value="current_month">本月</option>
+                   <option value="last_month">上月</option>
+                   <option value="this_year">今年</option>
+                   <option value="all">全部</option>
+                   <option value="custom">自定义</option>
+                 </select>
+               </div>
+               {statsFilterType === 'custom' && (
+                 <div className="flex items-center gap-2 mb-4">
+                   <input type="date" value={statsCustomRange.start} onChange={e => setStatsCustomRange({...statsCustomRange, start: e.target.value})} className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 outline-none" />
+                   <span className="text-gray-400 text-xs">-</span>
+                   <input type="date" value={statsCustomRange.end} onChange={e => setStatsCustomRange({...statsCustomRange, end: e.target.value})} className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 outline-none" />
+                 </div>
+               )}
+               <div className="grid grid-cols-2 gap-3 mb-2">
+                 <div className="bg-emerald-50 rounded-2xl p-3">
+                   <div className="text-[10px] font-bold text-emerald-600/70 mb-1">总收入</div>
+                   <div className="text-lg font-bold text-emerald-600 font-num">{formatMoney(stats.income)}</div>
+                 </div>
+                 <div className="bg-red-50 rounded-2xl p-3">
+                   <div className="text-[10px] font-bold text-red-600/70 mb-1">总支出</div>
+                   <div className="text-lg font-bold text-red-600 font-num">{formatMoney(stats.expense)}</div>
+                 </div>
+               </div>
              </div>
 
              <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
@@ -831,8 +834,7 @@ export default function App() {
         )}
       </div>
 
-      <div className="fixed bottom-24 left-1/2 -translate-x-1/2 flex items-center gap-4 z-40">
-         <button onClick={() => setShowAIChatModal(true)} className="w-12 h-12 rounded-full flex items-center justify-center text-indigo-500 bg-white shadow-lg shadow-indigo-500/20 transition-transform active:scale-95 border-2 border-indigo-50"><Bot size={24} /></button>
+      <div className="fixed bottom-24 left-1/2 -translate-x-1/2 flex items-center justify-center z-40">
          <button onClick={() => { if(stores.length>0) { setEditingTransaction(null); setShowAddModal(true); } else { showToast('请先创建店铺', 'error'); setShowStoreModal(true); }}} className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-xl shadow-blue-500/40 transition-transform active:scale-95 border-4 border-white bg-gradient-to-tr ${currentTheme.from} ${currentTheme.to}`}><Plus size={28} strokeWidth={3} /></button>
       </div>
 
@@ -906,7 +908,6 @@ export default function App() {
 
       {showStoreModal && <StoreModal stores={stores} onClose={() => setShowStoreModal(false)} onSelect={setCurrentStoreId} onAdd={handleAddStore} onDelete={handleDeleteStore} onUpdate={handleUpdateStore} currentId={currentStoreId} />}
       {showSettingsModal && <SettingsModal onClose={() => setShowSettingsModal(false)} hasStore={stores.length>0} onExport={handleExport} onImport={handleImport} onLogout={handleLogout} user={user} profile={profile} db={db} appId={appId} showToast={showToast} />}
-      {showAIChatModal && <AIChatModal onClose={() => setShowAIChatModal(false)} transactions={transactions} stats={stats} theme={currentTheme} />}
       {showAddModal && <AddTransactionModal onClose={() => setShowAddModal(false)} onSave={handleSaveTransaction} stores={stores} isAllMode={isAllStoresMode} defaultStoreId={isAllStoresMode && stores.length > 0 ? stores[0]?.id : currentStoreId} categories={currentStore?.categories || DEFAULT_CATEGORIES} theme={currentTheme} editingItem={editingTransaction} onUpdateCategories={handleUpdateCategories} currentStoreId={currentStoreId} showToast={showToast} />}
       {viewingTransaction && <ViewTransactionModal transaction={viewingTransaction} onClose={() => setViewingTransaction(null)} onEdit={() => handleEditClick(viewingTransaction)} onDelete={() => handleDeleteTransaction(viewingTransaction.id, viewingTransaction)} onViewImage={setPreviewImage} storeName={stores.find(s=>s.id === viewingTransaction.storeId)?.name || 'N/A'} />}
     </div>

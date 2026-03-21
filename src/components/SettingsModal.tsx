@@ -5,30 +5,35 @@ import { Camera, X, Check } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 
 const getCroppedImg = async (imageSrc: string, pixelCrop: any): Promise<string> => {
-  const image = new Image();
-  const promise = new Promise((resolve, reject) => {
-    image.onload = resolve;
-    image.onerror = reject;
-  });
-  image.src = imageSrc;
-  await promise;
-  const canvas = document.createElement('canvas');
-  canvas.width = 200;
-  canvas.height = 200;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
-  ctx.drawImage(
-    image,
-    pixelCrop.x,
-    pixelCrop.y,
-    pixelCrop.width,
-    pixelCrop.height,
-    0,
-    0,
-    200,
-    200
-  );
-  return canvas.toDataURL('image/jpeg', 0.8);
+  try {
+    const image = new Image();
+    const promise = new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+    });
+    image.src = imageSrc;
+    await promise;
+    const canvas = document.createElement('canvas');
+    canvas.width = 200;
+    canvas.height = 200;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('No 2d context');
+    ctx.drawImage(
+      image,
+      pixelCrop.x,
+      pixelCrop.y,
+      pixelCrop.width,
+      pixelCrop.height,
+      0,
+      0,
+      200,
+      200
+    );
+    return canvas.toDataURL('image/jpeg', 0.8);
+  } catch (e) {
+    console.error('Error in getCroppedImg:', e);
+    throw e;
+  }
 };
 
 export const BarChart = ({ label, data, total, color }: any) => {
@@ -68,16 +73,30 @@ export const SettingsModal = ({ onClose, hasStore, onExport, onImport, onLogout,
     const file = e.target.files?.[0];
     if (!file) return;
     
-    const reader = new FileReader();
-    reader.onload = () => {
-      setCropImageSrc(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImage(file, 1000);
+      setCropImageSrc(compressed);
+    } catch (err) {
+      console.error("Compression failed", err);
+      const reader = new FileReader();
+      reader.onload = () => {
+        setCropImageSrc(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
     e.target.value = ''; // reset input
   };
 
   const handleCropSave = async () => {
-    if (!cropImageSrc || !croppedAreaPixels || !user || !db) return;
+    if (!cropImageSrc) return;
+    if (!croppedAreaPixels) {
+      if (showToast) showToast('请稍候，图片处理中', 'error');
+      return;
+    }
+    if (!user || !db) {
+      if (showToast) showToast('用户状态异常', 'error');
+      return;
+    }
     setIsUploading(true);
     try {
       const croppedBase64 = await getCroppedImg(cropImageSrc, croppedAreaPixels);

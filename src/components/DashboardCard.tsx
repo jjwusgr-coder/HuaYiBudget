@@ -11,8 +11,21 @@ const StatBox = ({ label, val, color, icon: Icon }: any) => (
   </div>
 );
 
-export const DashboardCard = ({ theme, stats, isAllMode, onSwipe, dots }: any) => {
+export const DashboardCard = ({ theme, stats, isAllMode, onSwipe, dots, filterType }: any) => {
   const [ts, setTs] = React.useState(0);
+  
+  const getFilterLabel = () => {
+    const prefix = isAllMode ? '总' : '';
+    switch(filterType) {
+      case 'current_month': return `本月${prefix}结余`;
+      case 'last_month': return `上月${prefix}结余`;
+      case 'this_year': return `今年${prefix}结余`;
+      case 'all': return isAllMode ? '总资产' : '总结余';
+      case 'custom': return `自定义${prefix}结余`;
+      default: return `本月${prefix}结余`;
+    }
+  };
+
   return (
     <div 
       className={`relative overflow-hidden rounded-[2rem] p-5 text-white shadow-xl bg-gradient-to-br ${theme.from} ${theme.to} mb-5`} 
@@ -26,7 +39,7 @@ export const DashboardCard = ({ theme, stats, isAllMode, onSwipe, dots }: any) =
       <div className="relative z-10">
         <div className="flex justify-between items-center mb-1">
           <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full backdrop-blur-md">
-            {isAllMode ? '总资产' : '本月结余'}
+            {getFilterLabel()}
           </span>
           {dots && (
             <div className="flex gap-1">
