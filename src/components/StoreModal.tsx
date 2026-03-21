@@ -6,17 +6,19 @@ export const StoreModal = ({ stores, onClose, onSelect, onAdd, onDelete, onUpdat
   const [mode, setMode] = useState('list');
   const [name, setName] = useState('');
   const [themeId, setThemeId] = useState(THEMES[0].id);
+  const [customColor, setCustomColor] = useState('#3b82f6');
   const [editStore, setEditStore] = useState<any>(null);
 
   const handleEdit = (s: any) => { 
     setEditStore(s); 
     setName(s.name); 
-    setThemeId(s.theme); 
+    setThemeId(s.theme);
+    if (s.customColor) setCustomColor(s.customColor);
     setMode('edit'); 
   };
   
   const saveEdit = () => { 
-    onUpdate(editStore.id, name, themeId); 
+    onUpdate(editStore.id, name, themeId, customColor); 
     setMode('list'); 
     setEditStore(null); 
   };
@@ -44,7 +46,7 @@ export const StoreModal = ({ stores, onClose, onSelect, onAdd, onDelete, onUpdat
               {stores.map((s: any) => (
                 <div key={s.id} className={`flex items-center justify-between p-3 rounded-2xl border ${s.id === currentId ? 'border-blue-500 bg-blue-50' : 'border-gray-100'}`}>
                    <div className="flex items-center gap-3 cursor-pointer" onClick={() => {onSelect(s.id); onClose()}}>
-                     <div className={`w-3 h-3 rounded-full bg-gradient-to-br ${THEMES.find(t=>t.id===s.theme)?.from}`}/>
+                     <div className={`w-3 h-3 rounded-full bg-gradient-to-br ${THEMES.find(t=>t.id===s.theme)?.from}`} style={s.theme === 'custom' ? { background: s.customColor } : {}}/>
                      <span className="font-bold text-sm">{s.name}</span>
                    </div>
                    <div className="flex gap-2">
@@ -69,19 +71,29 @@ export const StoreModal = ({ stores, onClose, onSelect, onAdd, onDelete, onUpdat
                 placeholder="店铺名称" 
                 className="w-full border-b-2 border-gray-200 py-2 font-bold text-xl outline-none"
               />
-              <div className="grid grid-cols-5 gap-3">
+              <div className="grid grid-cols-6 gap-3">
                 {THEMES.map(t => (
                   <button 
                     key={t.id} 
                     onClick={()=>setThemeId(t.id)} 
-                    className={`w-full aspect-square rounded-full bg-gradient-to-br ${t.from} ${t.to} ring-2 ${themeId === t.id ? 'ring-gray-400' : 'ring-transparent'}`}
-                  />
+                    className={`w-full aspect-square rounded-full bg-gradient-to-br ${t.from} ${t.to} ring-2 flex items-center justify-center overflow-hidden relative ${themeId === t.id ? 'ring-gray-400' : 'ring-transparent'}`}
+                    style={t.id === 'custom' ? { background: customColor } : {}}
+                  >
+                    {t.id === 'custom' && (
+                      <input 
+                        type="color" 
+                        value={customColor}
+                        onChange={(e) => { setCustomColor(e.target.value); setThemeId('custom'); }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                    )}
+                  </button>
                 ))}
               </div>
               <div className="flex gap-3">
                 <button onClick={()=>setMode('list')} className="flex-1 py-3 bg-gray-100 rounded-xl font-bold text-gray-500 text-xs">取消</button>
                 <button 
-                  onClick={()=>mode==='edit'?saveEdit():onAdd(name, themeId)} 
+                  onClick={()=>mode==='edit'?saveEdit():onAdd(name, themeId, customColor)} 
                   disabled={!name} 
                   className="flex-1 py-3 bg-black text-white rounded-xl font-bold text-xs disabled:opacity-50"
                 >

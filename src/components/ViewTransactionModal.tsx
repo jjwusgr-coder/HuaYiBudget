@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Edit3, History, X, ArrowDownCircle, ArrowUpCircle, Store, ListFilter, Calendar, Paperclip, AlertCircle } from 'lucide-react';
+import { Edit3, History, X, ArrowDownCircle, ArrowUpCircle, Store, ListFilter, Calendar, Paperclip, AlertCircle, RefreshCw } from 'lucide-react';
 import { formatMoney, formatDate, formatDateTime } from '../utils/helpers';
 
 const DetailRow = ({ label, value, icon: Icon, color }: any) => (
@@ -70,6 +70,9 @@ export const ViewTransactionModal = ({ transaction, onClose, onEdit, onDelete, o
                   <DetailRow label="店铺" value={storeName} icon={Store} color="text-gray-600" />
                   <DetailRow label="分类" value={transaction.category} icon={ListFilter} color="text-gray-600" />
                   <DetailRow label="日期" value={formatDate(transaction.date)} icon={Calendar} color="text-gray-600" />
+                  {transaction.recurring && transaction.recurring !== 'none' && (
+                    <DetailRow label="重复" value={{daily:'每天',weekly:'每周',monthly:'每月',yearly:'每年'}[transaction.recurring as string] || '未知'} icon={RefreshCw} color="text-blue-600" />
+                  )}
                   {transaction.note && <DetailRow label="备注" value={transaction.note} icon={Paperclip} color="text-gray-600" />}
                   {transaction.isUnpaid && (
                     <div className="flex items-center gap-3 p-3 rounded-xl bg-red-50 border border-red-200">

@@ -4,6 +4,7 @@ export const THEMES = [
   { id: 'green', name: '清新绿', from: 'from-emerald-600', to: 'to-emerald-500', shadow: 'shadow-emerald-200', text: 'text-emerald-600', bg: 'bg-emerald-50' },
   { id: 'orange', name: '活力橙', from: 'from-orange-500', to: 'to-amber-500', shadow: 'shadow-orange-200', text: 'text-orange-600', bg: 'bg-orange-50' },
   { id: 'dark', name: '深邃黑', from: 'from-slate-800', to: 'to-slate-700', shadow: 'shadow-slate-400', text: 'text-slate-800', bg: 'bg-slate-100' },
+  { id: 'custom', name: '自定义', from: 'from-[var(--theme-from)]', to: 'to-[var(--theme-to)]', shadow: 'shadow-[var(--theme-shadow)]', text: 'text-[var(--theme-text)]', bg: 'bg-[var(--theme-bg)]' },
 ];
 
 export const ALL_STORES_THEME = { 

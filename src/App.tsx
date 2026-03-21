@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, Settings, ChevronDown, Search, AlertCircle, RefreshCw, Store, 
-  ListFilter, LayoutList, BarChart3, Layers, Sparkles, X, PieChart, Bot, AlertTriangle, Wallet, Leaf
+  ListFilter, LayoutList, BarChart3, Layers, Sparkles, X, PieChart, Bot, AlertTriangle, Wallet, Leaf, Bell
 } from 'lucide-react';
 import { 
   signInWithPopup, 
@@ -39,16 +39,16 @@ import { DashboardCard } from './components/DashboardCard';
 import { TransactionItem } from './components/TransactionItem';
 import { ViewTransactionModal } from './components/ViewTransactionModal';
 import { AddTransactionModal } from './components/AddTransactionModal';
-import { CategoryManagementModal } from './components/CategoryManagementModal';
 import { StoreModal } from './components/StoreModal';
 import { SettingsModal, BarChart } from './components/SettingsModal';
 
 import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
 import { AIChatModal } from './components/AIChatModal';
 
-const NavBtn = ({ icon: Icon, label, active, onClick, color }: any) => (
-  <button onClick={onClick} className={`flex flex-col items-center gap-0.5 p-2 transition-all ${active ? color : 'text-gray-300'}`}>
+const NavBtn = ({ icon: Icon, label, active, onClick, color, badge }: any) => (
+  <button onClick={onClick} className={`relative flex flex-col items-center gap-0.5 p-2 transition-all ${active ? color : 'text-gray-300'}`}>
     <Icon size={22} strokeWidth={active ? 2.5 : 2} />
+    {badge > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white"></span>}
     <span className="text-[9px] font-bold">{label}</span>
   </button>
 );
@@ -74,7 +74,6 @@ export default function App() {
   
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<any>(null);
   const [viewingTransaction, setViewingTransaction] = useState<any>(null); 
   const [showStoreModal, setShowStoreModal] = useState(false);
@@ -158,9 +157,11 @@ export default function App() {
       if (error.code === 'auth/email-already-in-use') {
         showToast('该邮箱已被注册', 'error');
       } else if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-        showToast('邮箱或密码错误', 'error');
+        showToast('账号或密码错误，请检查后重试', 'error');
       } else if (error.code === 'auth/weak-password') {
         showToast('密码太弱，请至少输入6位字符', 'error');
+      } else if (error.code === 'auth/invalid-email') {
+        showToast('邮箱格式不正确', 'error');
       } else {
         showToast(isLoginMode ? '登录失败，请重试' : '注册失败，请重试', 'error');
       }
@@ -179,7 +180,14 @@ export default function App() {
       await sendPasswordResetEmail(auth, email);
       showToast('密码重置邮件已发送，请查收', 'success');
     } catch (error: any) {
-      showToast('发送失败，请检查邮箱格式', 'error');
+      console.error("Password reset error:", error);
+      if (error.code === 'auth/user-not-found') {
+        showToast('该邮箱尚未注册', 'error');
+      } else if (error.code === 'auth/invalid-email') {
+        showToast('邮箱格式不正确', 'error');
+      } else {
+        showToast('发送失败，请稍后重试', 'error');
+      }
     }
   };
 
@@ -218,8 +226,33 @@ export default function App() {
   const currentTheme = useMemo(() => {
     if (isAllStoresMode) return ALL_STORES_THEME;
     if (!currentStore) return THEMES[0];
-    return THEMES.find(t => t.id === currentStore.theme) || THEMES[0];
+    const theme = THEMES.find(t => t.id === currentStore.theme) || THEMES[0];
+    return theme;
   }, [currentStore, isAllStoresMode]);
+
+  const customThemeStyle = useMemo(() => {
+    if (!isAllStoresMode && currentStore?.theme === 'custom' && currentStore.customColor) {
+      return {
+        '--theme-from': currentStore.customColor,
+        '--theme-to': currentStore.customColor + 'dd',
+        '--theme-shadow': currentStore.customColor + '33',
+        '--theme-text': currentStore.customColor,
+        '--theme-bg': currentStore.customColor + '1a',
+      } as React.CSSProperties;
+    }
+    return {};
+  }, [currentStore, isAllStoresMode]);
+
+  const upcomingTransactions = useMemo(() => {
+    if (!currentStoreId && !isAllStoresMode) return [];
+    const today = new Date().toISOString().split('T')[0];
+    return transactions.filter(t => {
+      if (!isAllStoresMode && t.storeId !== currentStoreId) return false;
+      const isFuture = t.date.split('T')[0] > today;
+      const isRecurring = t.recurring && t.recurring !== 'none';
+      return t.isUnpaid || isFuture || isRecurring;
+    }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [transactions, currentStoreId, isAllStoresMode]);
 
   const filteredTransactions = useMemo(() => {
     if (!currentStoreId && !isAllStoresMode) return [];
@@ -280,11 +313,11 @@ export default function App() {
     }
   };
 
-  const handleAddStore = async (name: string, theme: string) => {
+  const handleAddStore = async (name: string, theme: string, customColor?: string) => {
     if (!name) return;
     try {
       await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'stores'), {
-        name, theme, categories: DEFAULT_CATEGORIES, createdAt: serverTimestamp()
+        name, theme, customColor: customColor || null, categories: DEFAULT_CATEGORIES, createdAt: serverTimestamp()
       });
       setShowStoreModal(false);
       showToast('店铺已创建', 'success');
@@ -316,10 +349,10 @@ export default function App() {
     }
   };
   
-  const handleUpdateStore = async (id: string, name: string, theme: string) => {
+  const handleUpdateStore = async (id: string, name: string, theme: string, customColor?: string) => {
       if (!name) return showToast('名称不能为空', 'error');
       try {
-          await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'stores', id), { name, theme });
+          await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'stores', id), { name, theme, customColor: customColor || null });
           showToast('店铺更新成功', 'success');
       } catch (e) { showToast('更新失败', 'error'); }
   };
@@ -621,12 +654,17 @@ export default function App() {
           </div>
         </div>
         {showPrivacyModal && <PrivacyPolicyModal onClose={() => setShowPrivacyModal(false)} />}
+        {toast && (
+          <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[80] bg-gray-900/90 text-white px-5 py-2.5 rounded-full shadow-lg flex items-center gap-3 animate-slide-up">
+            <span className="text-xs font-bold">{toast.message}</span>
+          </div>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="h-screen w-full bg-gray-50 flex flex-col font-sans text-slate-800 relative overflow-hidden select-none">
+    <div className="h-screen w-full bg-gray-50 flex flex-col font-sans text-slate-800 relative overflow-hidden select-none" style={customThemeStyle}>
       <GlobalStyles />
       <div className="flex items-center justify-between px-5 py-3 pt-6 bg-white/80 backdrop-blur-md sticky top-0 z-30 shadow-sm safe-area-top">
         <div onClick={() => setShowStoreModal(true)} className="flex items-center gap-3 cursor-pointer active:opacity-60 transition-opacity">
@@ -669,9 +707,15 @@ export default function App() {
                <button onClick={toggleBatchMode} className={`px-4 py-2.5 rounded-2xl font-bold text-xs shadow-sm border transition-colors flex items-center gap-1 ${isBatchMode ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-white text-gray-500 border-transparent'}`}>
                  {isBatchMode ? '取消' : '多选'}
                </button>
-               {!isAllStoresMode && (
-                 <button onClick={() => setShowCategoryModal(true)} className="px-4 py-2.5 rounded-2xl font-bold text-xs shadow-sm border border-transparent bg-white text-gray-500 transition-colors flex items-center gap-1">
-                   分类
+               {isBatchMode && (
+                 <button onClick={() => {
+                   if (selectedIds.size === filteredTransactions.length && filteredTransactions.length > 0) {
+                     setSelectedIds(new Set());
+                   } else {
+                     setSelectedIds(new Set(filteredTransactions.map(t => t.id)));
+                   }
+                 }} className="px-4 py-2.5 rounded-2xl font-bold text-xs shadow-sm border border-transparent bg-white text-gray-500 transition-colors flex items-center gap-1">
+                   {selectedIds.size === filteredTransactions.length && filteredTransactions.length > 0 ? '全不选' : '全选'}
                  </button>
                )}
              </div>
@@ -704,6 +748,39 @@ export default function App() {
                    />
                ))}
              </div>
+          </div>
+        )}
+
+        {activeTab === 'upcoming' && stores.length > 0 && (
+          <div className="animate-fade-in">
+             <div className="flex items-center justify-between mb-4">
+               <h2 className="text-xl font-bold text-gray-800">待办与提醒</h2>
+             </div>
+             
+             {upcomingTransactions.length === 0 ? (
+               <div className="text-center py-12 text-gray-400">
+                 <Bell size={48} className="mx-auto mb-4 opacity-20" />
+                 <p>没有待办事项</p>
+               </div>
+             ) : (
+               <div className="space-y-3 pb-24">
+                 {upcomingTransactions.map(t => (
+                   <TransactionItem 
+                     key={t.id} 
+                     data={t} 
+                     onDelete={() => handleDeleteTransaction(t.id, t)} 
+                     onStatusChange={() => handleUpdateStatus(t.id, t.isUnpaid)} 
+                     onViewImage={setPreviewImage} 
+                     onEdit={() => { setEditingTransaction(t); setShowAddModal(true); }} 
+                     onViewDetail={() => setViewingTransaction(t)} 
+                     storeName={isAllStoresMode ? stores.find(s=>s.id===t.storeId)?.name : ''} 
+                     isBatchMode={isBatchMode} 
+                     isSelected={selectedIds.has(t.id)} 
+                     onToggleSelect={() => toggleSelection(t.id)} 
+                   />
+                 ))}
+               </div>
+             )}
           </div>
         )}
 
@@ -742,9 +819,12 @@ export default function App() {
          <button onClick={() => { if(stores.length>0) { setEditingTransaction(null); setShowAddModal(true); } else { showToast('请先创建店铺', 'error'); setShowStoreModal(true); }}} className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-xl shadow-blue-500/40 transition-transform active:scale-95 border-4 border-white bg-gradient-to-tr ${currentTheme.from} ${currentTheme.to}`}><Plus size={28} strokeWidth={3} /></button>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 h-16 bg-white/95 backdrop-blur-lg border-t border-gray-100 flex justify-between items-center px-12 pb-4 safe-area-bottom z-30">
+      <div className="fixed bottom-0 left-0 right-0 h-16 bg-white/95 backdrop-blur-lg border-t border-gray-100 flex justify-around items-center px-4 pb-4 safe-area-bottom z-30">
          <NavBtn icon={LayoutList} label="明细" active={activeTab === 'list'} onClick={() => setActiveTab('list')} color={currentTheme.text} />
+         <NavBtn icon={Bell} label="待办" active={activeTab === 'upcoming'} onClick={() => setActiveTab('upcoming')} color={currentTheme.text} badge={upcomingTransactions.length} />
+         <div className="w-12"></div>
          <NavBtn icon={BarChart3} label="统计" active={activeTab === 'stats'} onClick={() => setActiveTab('stats')} color={currentTheme.text} />
+         <NavBtn icon={Settings} label="设置" active={activeTab === 'settings'} onClick={() => setShowSettingsModal(true)} color={currentTheme.text} />
       </div>
 
       {previewImage && (
@@ -811,7 +891,6 @@ export default function App() {
       {showSettingsModal && <SettingsModal onClose={() => setShowSettingsModal(false)} hasStore={stores.length>0} onExport={handleExport} onImport={handleImport} onLogout={handleLogout} user={user} profile={profile} db={db} appId={appId} showToast={showToast} />}
       {showAIChatModal && <AIChatModal onClose={() => setShowAIChatModal(false)} transactions={transactions} stats={stats} theme={currentTheme} />}
       {showAddModal && <AddTransactionModal onClose={() => setShowAddModal(false)} onSave={handleSaveTransaction} stores={stores} isAllMode={isAllStoresMode} defaultStoreId={isAllStoresMode && stores.length > 0 ? stores[0]?.id : currentStoreId} categories={currentStore?.categories || DEFAULT_CATEGORIES} theme={currentTheme} editingItem={editingTransaction} onUpdateCategories={handleUpdateCategories} currentStoreId={currentStoreId} showToast={showToast} />}
-      {showCategoryModal && <CategoryManagementModal onClose={() => setShowCategoryModal(false)} categories={currentStore?.categories || DEFAULT_CATEGORIES} onUpdateCategories={handleUpdateCategories} storeId={currentStoreId} showToast={showToast} />}
       {viewingTransaction && <ViewTransactionModal transaction={viewingTransaction} onClose={() => setViewingTransaction(null)} onEdit={() => handleEditClick(viewingTransaction)} onDelete={() => handleDeleteTransaction(viewingTransaction.id, viewingTransaction)} onViewImage={setPreviewImage} storeName={stores.find(s=>s.id === viewingTransaction.storeId)?.name || 'N/A'} />}
     </div>
   );

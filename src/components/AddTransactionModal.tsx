@@ -14,6 +14,7 @@ export const AddTransactionModal = ({ onClose, onSave, stores, isAllMode, defaul
   const [percentage, setPercentage] = useState(100);
   const [images, setImages] = useState<string[]>([]);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [recurring, setRecurring] = useState('none');
   const [isManageMode, setIsManageMode] = useState(false);
   
   // AI State
@@ -42,6 +43,7 @@ export const AddTransactionModal = ({ onClose, onSave, stores, isAllMode, defaul
         setCategory(editingItem.category); 
         setNote(editingItem.note || '');
         if(editingItem.date) setDate(editingItem.date.split('T')[0]);
+        if(editingItem.recurring) setRecurring(editingItem.recurring);
         setStoreId(editingItem.storeId); 
         if(editingItem.isUnpaid) setIsUnpaid(true); 
         if(editingItem.images && editingItem.images.length > 0) setImages(editingItem.images); 
@@ -202,6 +204,7 @@ export const AddTransactionModal = ({ onClose, onSave, stores, isAllMode, defaul
         storeId, 
         note, 
         isUnpaid: type === 'expense' ? isUnpaid : false, 
+        recurring,
         images, 
         date: new Date(date).toISOString() 
     }, editingItem?.id);
@@ -337,8 +340,15 @@ export const AddTransactionModal = ({ onClose, onSave, stores, isAllMode, defaul
                 <Calendar size={16} className="text-gray-400"/>
                 <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="bg-transparent font-bold text-sm text-gray-700 outline-none w-full"/>
             </div>
+            <select value={recurring} onChange={e=>setRecurring(e.target.value)} className="bg-gray-50 px-3 rounded-2xl border border-gray-200 text-xs font-bold text-gray-600 outline-none">
+                <option value="none">不重复</option>
+                <option value="daily">每天</option>
+                <option value="weekly">每周</option>
+                <option value="monthly">每月</option>
+                <option value="yearly">每年</option>
+            </select>
             {type === 'expense' && (
-                <button onClick={()=>setIsUnpaid(!isUnpaid)} className={`px-5 rounded-2xl border transition-colors flex items-center justify-center font-bold text-xs ${isUnpaid ? 'bg-red-50 text-red-600 border-red-200' : 'bg-white text-gray-400 border-gray-200'}`}>
+                <button onClick={()=>setIsUnpaid(!isUnpaid)} className={`px-4 rounded-2xl border transition-colors flex items-center justify-center font-bold text-xs ${isUnpaid ? 'bg-red-50 text-red-600 border-red-200' : 'bg-white text-gray-400 border-gray-200'}`}>
                     未付款项
                 </button>
             )}
